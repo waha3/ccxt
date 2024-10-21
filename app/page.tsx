@@ -1,101 +1,83 @@
-import Image from "next/image";
+// import Image from "next/image";
+"use client";
+
+import ccxt, { version, exchanges } from "ccxt";
+import { useEffect } from "react";
+
+console.log(version, Object.keys(exchanges));
+
+async function example_with_fetch_trades() {
+  const exch = new ccxt.binance({});
+  // exch.socksProxy = "socks5://127.0.0.1:1080";
+  // await exch.loadProxyModules();
+  const timeframe = "1m";
+  const symbol = "OGN/USDT";
+  const since = exch.milliseconds() - 1000 * 60 * 30; // last 30 mins
+  const limit = 1000;
+  const trades = await exch.fetchTrades(symbol, since, limit);
+  const generatedBars = exch.buildOHLCVC(trades, timeframe, since, limit);
+  // you can ignore 6th index ("count" field) from ohlcv entries, which is not part of OHLCV standard structure and is just added internally by `buildOHLCVC` method
+  console.log(
+    "[REST] Constructed",
+    generatedBars.length,
+    "bars from trades: ",
+    generatedBars
+  );
+}
+
+async function example_with_watch_trades() {
+  const exch = new ccxt.pro.binance({});
+  exch.socksProxy = "socks5://127.0.0.1:1080";
+  const timeframe = "1m";
+  const symbol = "DOGE/USDT";
+  const limit = 1000;
+  const since = exch.milliseconds() - 10 * 60 * 1000 * 1000; // last 10 hrs
+  let collectedTrades = [];
+  const collectedBars = [];
+  while (true) {
+    const wsTrades = await exch.watchTrades(symbol, since, limit, {});
+    collectedTrades = collectedTrades.concat(wsTrades);
+    const generatedBars = exch.buildOHLCVC(
+      collectedTrades,
+      timeframe,
+      since,
+      limit
+    );
+    // Note: first bar would be partially constructed bar and its 'open' & 'high' & 'low' prices (except 'close' price) would probably have different values compared to real bar on chart, because the first obtained trade timestamp might be somewhere in the middle of timeframe period, so the pre-period would be missing because we would not have trades data. To fix that, you can get older data with `fetchTrades` to fill up bars till start bar.
+    for (let i = 0; i < generatedBars.length; i++) {
+      const bar = generatedBars[i];
+      const barTimestamp = bar[0];
+      const collectedBarsLength = collectedBars.length;
+      const lastCollectedBarTimestamp =
+        collectedBarsLength > 0 ? collectedBars[collectedBarsLength - 1][0] : 0;
+      if (barTimestamp === lastCollectedBarTimestamp) {
+        // if timestamps are same, just updarte the last bar
+        collectedBars[collectedBarsLength - 1] = bar;
+      } else if (barTimestamp > lastCollectedBarTimestamp) {
+        collectedBars.push(bar);
+        // remove the trades from saved array, which were till last collected bar's open timestamp
+        collectedTrades = exch.filterBySinceLimit(
+          collectedTrades,
+          barTimestamp
+        );
+      }
+    }
+    // Note: first bar would carry incomplete values, please read comment in "buildOHLCVCFromWatchTrades" method definition for further explanation
+    console.log(
+      "[WS] Constructed",
+      collectedBars.length,
+      "bars from",
+      symbol,
+      "trades: ",
+      collectedBars
+    );
+  }
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  useEffect(() => {
+    example_with_fetch_trades();
+  }, []);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+  return <div>hello world</div>;
 }
